@@ -1,0 +1,35 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+
+# LangChain & LangGraph - compatible versions
+langchain
+langgraph
+langchain-openai
+langchain-anthropic
+
+# MCP Integration
+mcp
+langchain-mcp-adapters
+
+# Database & Models
+sqlmodel
+
+# Utilities
+pydantic
+pydantic-settings
+python-dotenv
+
+# Observability & Security
+structlog
+python-multipart
+sse-starlette
+
+# Development & Testing
+pytest
+pytest-asyncio
+httpx
+
+# Optional - for advanced features
+redis
+opentelemetry-api
