@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Dict, List, Optional, TypedDict, Any
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END, MessagesState
@@ -21,6 +21,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from .session_manager import SessionManager
 from .observability import setup_logging, trace_operation
 from .models import SessionState
+from .mcp_tools import mcp_tools_manager, create_fallback_tools
 
 
 # Setup logging
@@ -55,61 +56,114 @@ class LumaHealthAgent:
     def __init__(self, anthropic_api_key: str, session_manager: SessionManager):
         self.anthropic_api_key = anthropic_api_key
         self.session_manager = session_manager
+        self.tools = []
+        self.use_mcp = False
         
-        # Initialize Claude LLM
+        # Initialize Claude LLM with configurable model
+        claude_model = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
         self.llm = ChatAnthropic(
-            model="claude-3-5-sonnet-20241022",
+            model=claude_model,
             api_key=anthropic_api_key,
             temperature=0.1,
             max_tokens=1024
         )
         
+        logger.info(f"Initialized Claude LLM with model: {claude_model}")
+        
+        # Initialize MCP tools
+        asyncio.create_task(self._initialize_tools())
+        
         # State persistence
         self.memory = MemorySaver()
         
-        # Build the conversation graph
-        self.graph = self._build_graph()
+        # Build the conversation graph (will be rebuilt after tools are ready)
+        self.graph = None
         
         logger.info("LumaHealth LangGraph Agent initialized")
     
-    def _build_graph(self) -> StateGraph:
-        """Build the LangGraph StateGraph for conversation flow."""
+    async def _initialize_tools(self):
+        """Initialize MCP tools with fallback to direct calls."""
+        try:
+            # Try to initialize MCP connection
+            if await mcp_tools_manager.initialize_mcp_connection():
+                self.tools = mcp_tools_manager.get_tools()
+                self.use_mcp = True
+                logger.info("Using true MCP protocol for tools")
+            else:
+                raise Exception("MCP connection failed")
+                
+        except Exception as e:
+            logger.warning(f"MCP initialization failed: {e}. Using fallback tools.")
+            self.tools = create_fallback_tools()
+            self.use_mcp = False
         
-        # Create the StateGraph
-        workflow = StateGraph(ConversationState)
+        # Bind tools to LLM
+        self.llm_with_tools = self.llm.bind_tools(self.tools)
         
-        # Add nodes
-        workflow.add_node("process_message", self._process_message_node)
-        workflow.add_node("verify_user", self._verify_user_node)
-        workflow.add_node("list_appointments", self._list_appointments_node)
-        workflow.add_node("manage_appointment", self._manage_appointment_node)
-        workflow.add_node("handle_error", self._handle_error_node)
-        workflow.add_node("generate_response", self._generate_response_node)
+        # Build the graph now that tools are ready
+        self.graph = self._build_graph()
         
-        # Add edges with conditional routing
-        workflow.add_edge(START, "process_message")
+        logger.info(f"Initialized {len(self.tools)} tools ({'MCP' if self.use_mcp else 'fallback'} mode)")
+    
+    def _build_graph(self):
+        """Build the LangGraph agent using prebuilt tools pattern."""
+        if not self.tools:
+            return None
+            
+        # Use LangGraph's prebuilt agent with tools
+        from langgraph.prebuilt import create_react_agent
         
-        workflow.add_conditional_edges(
-            "process_message",
-            self._route_conversation,
-            {
-                "verify": "verify_user",
-                "list": "list_appointments", 
-                "manage": "manage_appointment",
-                "error": "handle_error",
-                "respond": "generate_response"
-            }
+        # Create system message with context
+        system_message = self._get_base_system_prompt()
+        
+        # Create the agent with tools
+        agent = create_react_agent(
+            self.llm_with_tools,
+            self.tools,
+            state_modifier=system_message,
+            checkpointer=self.memory
         )
         
-        # All nodes lead to response generation
-        workflow.add_edge("verify_user", "generate_response")
-        workflow.add_edge("list_appointments", "generate_response")
-        workflow.add_edge("manage_appointment", "generate_response")
-        workflow.add_edge("handle_error", "generate_response")
-        workflow.add_edge("generate_response", END)
-        
-        # Compile with checkpointer for state persistence
-        return workflow.compile(checkpointer=self.memory)
+        logger.info("Built LangGraph React Agent with tools")
+        return agent
+    
+    def _get_base_system_prompt(self) -> str:
+        """Get the base system prompt for the agent."""
+        return """Você é um assistente virtual da LumaHealth, especializado em ajudar pacientes com consultas médicas.
+
+SUAS CAPACIDADES:
+- Verificar identidade de pacientes (nome completo + data de nascimento)
+- Listar consultas agendadas
+- Confirmar consultas pendentes
+- Cancelar consultas quando solicitado
+- Fornecer informações sobre consultas
+
+REGRAS IMPORTANTES:
+1. SEMPRE verifique a identidade antes de mostrar informações médicas
+2. Seja empático e profissional
+3. Confirme ações importantes antes de executá-las
+4. Se não entender algo, peça esclarecimentos
+5. Mantenha conversas focadas em consultas médicas
+6. Use as ferramentas disponíveis para executar ações
+
+FERRAMENTAS DISPONÍVEIS:
+- verify_user: Para verificar identidade do paciente
+- list_appointments: Para listar consultas do paciente verificado
+- confirm_appointment: Para confirmar consultas pendentes
+- cancel_appointment: Para cancelar consultas
+- get_session_info: Para verificar status da sessão
+
+DADOS DO PACIENTE DE TESTE:
+- Nome: João Silva
+- Data de nascimento: 15/03/1985
+- Tem consultas agendadas disponíveis
+
+FLUXO ESPERADO:
+1. Se usuário não verificado → pedir nome e data de nascimento → usar verify_user
+2. Se usuário verificado → pode usar list_appointments, confirm_appointment, cancel_appointment
+3. Sempre confirmar ações importantes antes de executar
+
+Seja natural e conversacional, mas sempre use as ferramentas para executar ações reais."""
     
     def _get_system_prompt(self, state: ConversationState) -> str:
         """Generate dynamic system prompt based on conversation state."""
@@ -500,52 +554,54 @@ DADOS DO PACIENTE DE TESTE:
         """
         try:
             with trace_operation("process_conversation", session_id=session_id):
-                # Get or create session state
+                # Wait for graph to be ready
+                if not self.graph:
+                    return {
+                        "reply": "Sistema ainda inicializando, tente novamente em alguns segundos...",
+                        "state": {"is_verified": False, "initializing": True},
+                        "observability": {"error": "graph_not_ready", "tools_used": []}
+                    }
+                
+                # Get or create session state  
                 session_state = self.session_manager.get_or_create_session(session_id)
                 
-                # Build initial conversation state
-                initial_state = ConversationState(
-                    messages=[HumanMessage(content=message)],
-                    session_id=session_id,
-                    patient_id=session_state.patient_id,
-                    is_verified=session_state.is_verified,
-                    last_intent=session_state.last_intent,
-                    conversation_stage="greeting",
-                    appointments_context=[],
-                    error_count=0,
-                    metadata={}
-                )
-                
-                # Process through the graph
+                # Process message through LangGraph agent
                 config = {"configurable": {"thread_id": session_id}}
-                result = await self.graph.ainvoke(initial_state, config=config)
+                input_message = {"messages": [HumanMessage(content=message)]}
                 
-                # Extract response
-                ai_response = result["messages"][-1] if result["messages"] else None
-                response_text = ai_response.content if ai_response else "Desculpe, não consegui processar sua mensagem."
+                result = await self.graph.ainvoke(input_message, config=config)
                 
-                # Update session manager
-                if result.get("is_verified") != session_state.is_verified:
-                    session_state.is_verified = result["is_verified"]
-                    session_state.patient_id = result.get("patient_id")
+                # Extract response from agent
+                messages = result.get("messages", [])
+                last_message = messages[-1] if messages else None
                 
-                session_state.last_intent = result.get("last_intent")
+                if last_message and hasattr(last_message, 'content'):
+                    response_text = last_message.content
+                else:
+                    response_text = "Desculpe, não consegui processar sua mensagem."
+                
+                # Update session state based on conversation
                 session_state.last_activity = datetime.utcnow()
                 self.session_manager.update_session(session_id, session_state)
+                
+                # Extract tool usage from messages
+                tools_used = []
+                for msg in messages:
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        tools_used.extend([tc['name'] for tc in msg.tool_calls])
                 
                 return {
                     "reply": response_text,
                     "state": {
-                        "is_verified": result.get("is_verified", False),
-                        "patient_id": result.get("patient_id"),
-                        "last_intent": result.get("last_intent"),
-                        "conversation_stage": result.get("conversation_stage")
+                        "is_verified": session_state.is_verified,
+                        "patient_id": session_state.patient_id,
+                        "last_intent": session_state.last_intent
                     },
                     "observability": {
-                        "intent": result.get("last_intent", "unknown"),
-                        "stage": result.get("conversation_stage", "unknown"),
-                        "tools_used": ["langgraph", "claude"],
-                        "appointments_count": len(result.get("appointments_context", []))
+                        "tools_used": ["langgraph", "claude"] + tools_used,
+                        "message_count": len(messages),
+                        "mcp_mode": self.use_mcp,
+                        "model": os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
                     }
                 }
         
