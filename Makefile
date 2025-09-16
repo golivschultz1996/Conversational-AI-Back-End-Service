@@ -37,6 +37,15 @@ run-api: ## Run FastAPI server
 run-mcp: ## Run MCP server
 	python -m app.mcp_server
 
+run-web-chat: ## Run web chat interface
+	python app/web_chat.py
+
+chat: ## Run interactive terminal chat
+	python app/chat_client.py
+
+chat-test: ## Run quick chat test
+	python app/chat_client.py --test
+
 demo: ## Run MCP client demo
 	python scripts/demo_mcp_client.py
 

@@ -71,6 +71,28 @@ make run-mcp
 python -m app.mcp_server
 ```
 
+#### Chat Interfaces (New!)
+
+**🎯 Quick Start - Interactive Chat:**
+```bash
+# All-in-one demo launcher
+python start_chat_demo.py
+
+# OR Individual interfaces:
+
+# Terminal chat (recommended for testing)
+make chat
+# OR: python app/chat_client.py
+
+# Web chat interface  
+make run-web-chat
+# Then visit: http://localhost:8001
+
+# Quick automated test
+make chat-test
+# OR: python app/chat_client.py --test
+```
+
 #### Run Demo Client
 ```bash
 make demo
@@ -268,6 +290,67 @@ All interactions are logged with:
 ```
 
 ## 🧪 Testing
+
+## 💬 Interactive Chat Interfaces
+
+### Terminal Chat Interface
+Rich terminal-based chat with commands and session management:
+
+```bash
+# Start terminal chat
+python app/chat_client.py
+
+# Available commands in chat:
+# - help: Show available commands
+# - clear: Clear screen  
+# - history: Show conversation history
+# - status: Show session status
+# - verify <name> <surname> <date>: Quick verification
+# - appointments: List appointments (if verified)
+# - quit/exit: Exit chat
+```
+
+**Features:**
+- 🔒 Session management with verification status
+- 📜 Conversation history tracking  
+- ⚡ Quick commands for common actions
+- 🎨 Formatted output with timestamps
+- 🔍 Real-time status indicators
+
+### Web Chat Interface  
+Beautiful browser-based interface with real-time communication:
+
+```bash
+# Start web chat server
+python app/web_chat.py
+# Then visit: http://localhost:8001
+```
+
+**Features:**
+- 🌐 Modern web interface with responsive design
+- ⚡ Real-time WebSocket communication
+- 👤 Visual message bubbles (user vs assistant)
+- 🟢 Connection status indicators
+- ✅ Verification status display
+- 📱 Mobile-friendly design
+
+### All-in-One Demo Launcher
+Orchestrated startup of all services:
+
+```bash
+# Interactive demo manager
+python start_chat_demo.py
+
+# Quick web-only mode
+python start_chat_demo.py --auto-web
+```
+
+The demo manager provides:
+- 🚀 Automatic service startup (API + Web Chat)
+- 🎯 Menu-driven interface selection
+- 📊 Service health monitoring
+- 🧪 Built-in test scenarios
+- 🔧 API testing examples
 
 ### Sample Test Data
 
