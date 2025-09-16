@@ -22,6 +22,7 @@ from sqlmodel import Session
 from .db import create_db_and_tables, PatientCRUD, AppointmentCRUD, engine
 from .session_manager import SessionManager
 from .observability import setup_logging
+from .security import with_guardrails, guardrails
 
 # Setup logging
 logger = setup_logging()
@@ -131,6 +132,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
 
+@with_guardrails("verify_user")
 async def verify_user_tool(args: dict) -> Dict[str, Any]:
     """
     Verify user identity using full name and date of birth.
@@ -183,6 +185,7 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
         }
 
 
+@with_guardrails("list_appointments")
 async def list_appointments_tool(args: dict) -> List[Dict[str, Any]]:
     """
     List all appointments for a verified session.
@@ -234,6 +237,7 @@ async def list_appointments_tool(args: dict) -> List[Dict[str, Any]]:
         }]
 
 
+@with_guardrails("confirm_appointment")
 async def confirm_appointment_tool(args: dict) -> Dict[str, Any]:
     """
     Confirm an appointment by ID or by date/time reference.
@@ -307,6 +311,7 @@ async def confirm_appointment_tool(args: dict) -> Dict[str, Any]:
         }
 
 
+@with_guardrails("cancel_appointment")
 async def cancel_appointment_tool(args: dict) -> Dict[str, Any]:
     """
     Cancel an appointment by ID or by date/time reference.

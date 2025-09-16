@@ -24,6 +24,8 @@ from .models import (
 )
 from .session_manager import SessionManager
 from .observability import setup_logging, log_request
+from .graph import LumaHealthAgent
+from .security import guardrails
 
 # Setup structured logging
 logger = setup_logging()
@@ -31,15 +33,32 @@ logger = setup_logging()
 # Global session manager (in-memory for MVP)
 session_manager = SessionManager()
 
+# Global LangGraph agent (will be initialized in lifespan)
+langgraph_agent: Optional[LumaHealthAgent] = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
+    global langgraph_agent
+    
     # Startup
     logger.info("Starting LumaHealth Conversational AI Service")
     create_db_and_tables()
     seed_database()
     logger.info("Database initialized and seeded")
+    
+    # Initialize LangGraph Agent with Claude
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if anthropic_api_key:
+        try:
+            langgraph_agent = LumaHealthAgent(anthropic_api_key, session_manager)
+            logger.info("LangGraph Agent with Claude initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize LangGraph Agent: {e}")
+            logger.warning("Falling back to simple NLU mode")
+    else:
+        logger.warning("ANTHROPIC_API_KEY not found - using simple NLU mode")
     
     yield
     
@@ -96,6 +115,18 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
+@app.get("/security/summary")
+async def security_summary(session_id: Optional[str] = None):
+    """Get security and guardrails summary for monitoring."""
+    summary = guardrails.get_security_summary(session_id)
+    summary["service_info"] = {
+        "langgraph_enabled": langgraph_agent is not None,
+        "total_sessions": session_manager.get_session_count(),
+        "verified_sessions": session_manager.get_verified_session_count()
+    }
+    return summary
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     request: ChatRequest,
@@ -104,108 +135,147 @@ async def chat_endpoint(
     """
     Main chat endpoint for conversational interactions.
     
-    This endpoint processes natural language requests and routes them
-    to appropriate actions (verify, list, confirm, cancel).
+    This endpoint processes natural language requests using LangGraph + Claude
+    or falls back to simple NLU if LangGraph is not available.
     """
     start_time = datetime.utcnow()
     
     # Generate or use existing session ID
     session_id = request.session_id or str(uuid.uuid4())
     
-    # Get or create session state
-    session_state = session_manager.get_or_create_session(session_id)
-    
     try:
-        # Simple intent detection (will be replaced with LangGraph)
-        message = request.message.lower().strip()
-        
-        if any(word in message for word in ["verificar", "verify", "sou", "nome"]):
-            intent = "verify_user"
-        elif any(word in message for word in ["listar", "list", "consultas", "appointments"]):
-            intent = "list_appointments"
-        elif any(word in message for word in ["confirmar", "confirm"]):
-            intent = "confirm_appointment"
-        elif any(word in message for word in ["cancelar", "cancel"]):
-            intent = "cancel_appointment"
-        else:
-            intent = "unknown"
-        
-        # Update session state
-        session_state.last_intent = intent
-        session_state.last_activity = datetime.utcnow()
-        session_manager.update_session(session_id, session_state)
-        
-        # Process based on intent
-        if intent == "verify_user":
-            reply = "Para verificar sua identidade, preciso do seu nome completo e data de nascimento. Por favor, forneça essas informações."
+        # Use LangGraph agent if available
+        if langgraph_agent:
+            logger.info(f"Processing with LangGraph Agent: {session_id}")
             
-        elif intent == "list_appointments":
-            if not session_state.is_verified:
-                reply = "Primeiro preciso verificar sua identidade. Por favor, forneça seu nome completo e data de nascimento."
-            else:
-                appointments = AppointmentCRUD.get_by_patient_id(db, session_state.patient_id)
-                if appointments:
-                    apt_list = []
-                    for apt in appointments:
-                        apt_list.append({
-                            "id": apt.id,
-                            "date": apt.when_utc.strftime("%Y-%m-%d"),
-                            "time": apt.when_utc.strftime("%H:%M"),
-                            "doctor": apt.doctor_name,
-                            "location": apt.location,
-                            "status": apt.status
-                        })
-                    session_state.last_list = apt_list
-                    session_manager.update_session(session_id, session_state)
-                    
-                    reply = f"Você tem {len(appointments)} consulta(s):\\n"
-                    for i, apt in enumerate(apt_list, 1):
-                        reply += f"{i}. {apt['date']} às {apt['time']} - {apt['doctor']} ({apt['status']})\\n"
-                else:
-                    reply = "Você não tem consultas agendadas."
-                    
-        elif intent == "confirm_appointment":
-            if not session_state.is_verified:
-                reply = "Primeiro preciso verificar sua identidade."
-            else:
-                reply = "Para confirmar uma consulta, por favor especifique qual consulta deseja confirmar (número ou data)."
-                
-        elif intent == "cancel_appointment":
-            if not session_state.is_verified:
-                reply = "Primeiro preciso verificar sua identidade."
-            else:
-                reply = "Para cancelar uma consulta, por favor especifique qual consulta deseja cancelar (número ou data)."
-                
+            result = await langgraph_agent.process_conversation(
+                session_id=session_id,
+                message=request.message
+            )
+            
+            # Calculate response time
+            latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            
+            # Add latency to observability
+            result["observability"]["latency_ms"] = latency_ms
+            
+            # Log the interaction
+            log_request(
+                session_id=session_id,
+                intent=result["observability"].get("intent", "unknown"),
+                message=request.message,
+                response=result["reply"],
+                latency_ms=latency_ms,
+                success=True,
+                tools_used=result["observability"].get("tools_used", [])
+            )
+            
+            return ChatResponse(
+                session_id=session_id,
+                reply=result["reply"],
+                state=result["state"],
+                observability=result["observability"]
+            )
+        
         else:
-            reply = "Desculpe, não entendi. Posso ajudar você a verificar sua identidade, listar suas consultas, confirmar ou cancelar consultas. Como posso ajudar?"
-        
-        # Calculate response time
-        latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-        
-        # Log the interaction
-        log_request(
-            session_id=session_id,
-            intent=intent,
-            message=request.message,
-            response=reply,
-            latency_ms=latency_ms,
-            success=True
-        )
-        
-        return ChatResponse(
-            session_id=session_id,
-            reply=reply,
-            state={
-                "is_verified": session_state.is_verified,
-                "last_intent": intent,
-                "patient_id": session_state.patient_id
-            },
-            observability={
-                "intent": intent,
-                "tools_used": ["simple_nlu"],
-                "latency_ms": latency_ms
-            }
-        )
+            # Fallback to simple NLU (original implementation)
+            logger.info(f"Processing with Simple NLU (fallback): {session_id}")
+            
+            # Get or create session state
+            session_state = session_manager.get_or_create_session(session_id)
+            
+            # Simple intent detection
+            message = request.message.lower().strip()
+            
+            if any(word in message for word in ["verificar", "verify", "sou", "nome"]):
+                intent = "verify_user"
+            elif any(word in message for word in ["listar", "list", "consultas", "appointments"]):
+                intent = "list_appointments"
+            elif any(word in message for word in ["confirmar", "confirm"]):
+                intent = "confirm_appointment"
+            elif any(word in message for word in ["cancelar", "cancel"]):
+                intent = "cancel_appointment"
+            else:
+                intent = "unknown"
+            
+            # Update session state
+            session_state.last_intent = intent
+            session_state.last_activity = datetime.utcnow()
+            session_manager.update_session(session_id, session_state)
+            
+            # Process based on intent
+            if intent == "verify_user":
+                reply = "Para verificar sua identidade, preciso do seu nome completo e data de nascimento. Por favor, forneça essas informações."
+                
+            elif intent == "list_appointments":
+                if not session_state.is_verified:
+                    reply = "Primeiro preciso verificar sua identidade. Por favor, forneça seu nome completo e data de nascimento."
+                else:
+                    appointments = AppointmentCRUD.get_by_patient_id(db, session_state.patient_id)
+                    if appointments:
+                        apt_list = []
+                        for apt in appointments:
+                            apt_list.append({
+                                "id": apt.id,
+                                "date": apt.when_utc.strftime("%Y-%m-%d"),
+                                "time": apt.when_utc.strftime("%H:%M"),
+                                "doctor": apt.doctor_name,
+                                "location": apt.location,
+                                "status": apt.status
+                            })
+                        session_state.last_list = apt_list
+                        session_manager.update_session(session_id, session_state)
+                        
+                        reply = f"Você tem {len(appointments)} consulta(s):\\n"
+                        for i, apt in enumerate(apt_list, 1):
+                            reply += f"{i}. {apt['date']} às {apt['time']} - {apt['doctor']} ({apt['status']})\\n"
+                    else:
+                        reply = "Você não tem consultas agendadas."
+                        
+            elif intent == "confirm_appointment":
+                if not session_state.is_verified:
+                    reply = "Primeiro preciso verificar sua identidade."
+                else:
+                    reply = "Para confirmar uma consulta, por favor especifique qual consulta deseja confirmar (número ou data)."
+                    
+            elif intent == "cancel_appointment":
+                if not session_state.is_verified:
+                    reply = "Primeiro preciso verificar sua identidade."
+                else:
+                    reply = "Para cancelar uma consulta, por favor especifique qual consulta deseja cancelar (número ou data)."
+                    
+            else:
+                reply = "Desculpe, não entendi. Posso ajudar você a verificar sua identidade, listar suas consultas, confirmar ou cancelar consultas. Como posso ajudar?"
+            
+            # Calculate response time
+            latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            
+            # Log the interaction
+            log_request(
+                session_id=session_id,
+                intent=intent,
+                message=request.message,
+                response=reply,
+                latency_ms=latency_ms,
+                success=True,
+                tools_used=["simple_nlu"]
+            )
+            
+            return ChatResponse(
+                session_id=session_id,
+                reply=reply,
+                state={
+                    "is_verified": session_state.is_verified,
+                    "last_intent": intent,
+                    "patient_id": session_state.patient_id
+                },
+                observability={
+                    "intent": intent,
+                    "tools_used": ["simple_nlu"],
+                    "latency_ms": latency_ms,
+                    "mode": "fallback"
+                }
+            )
         
     except Exception as e:
         logger.error(f"Error processing chat request: {e}", exc_info=True)
