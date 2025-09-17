@@ -300,28 +300,32 @@ def create_fallback_tools() -> List[BaseTool]:
             name="verify_user",
             description="Verify user identity using full name and date of birth",
             args_schema=VerifyUserInput,
-            return_direct=False
+            return_direct=False,
+            coroutine=verify_user_fallback  # Add coroutine parameter for async
         ),
         StructuredTool.from_function(
             func=list_appointments_fallback,
             name="list_appointments",
             description="List all appointments for a verified session",
             args_schema=ListAppointmentsInput,
-            return_direct=False
+            return_direct=False,
+            coroutine=list_appointments_fallback  # Add coroutine parameter for async
         ),
         StructuredTool.from_function(
             func=confirm_appointment_fallback,
             name="confirm_appointment",
             description="Confirm an appointment by ID or by date/time reference",
             args_schema=ConfirmAppointmentInput,
-            return_direct=False
+            return_direct=False,
+            coroutine=confirm_appointment_fallback  # Add coroutine parameter for async
         ),
         StructuredTool.from_function(
             func=cancel_appointment_fallback,
             name="cancel_appointment",
             description="Cancel an appointment by ID or by date/time reference",
             args_schema=CancelAppointmentInput,
-            return_direct=False
+            return_direct=False,
+            coroutine=cancel_appointment_fallback  # Add coroutine parameter for async
         )
     ]
 

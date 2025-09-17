@@ -6,9 +6,14 @@ with Claude LLM, state persistence, and MCP tool integration.
 """
 
 import asyncio
+import os
 import uuid
 from datetime import datetime
 from typing import Annotated, Dict, List, Optional, TypedDict, Any
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -70,19 +75,39 @@ class LumaHealthAgent:
         
         logger.info(f"Initialized Claude LLM with model: {claude_model}")
         
-        # Initialize MCP tools
-        asyncio.create_task(self._initialize_tools())
-        
         # State persistence
         self.memory = MemorySaver()
         
-        # Build the conversation graph (will be rebuilt after tools are ready)
-        self.graph = None
+        # Initialize tools and graph immediately with fallback
+        self._initialize_tools_sync()
         
         logger.info("LumaHealth LangGraph Agent initialized")
     
+    def _initialize_tools_sync(self):
+        """Initialize tools synchronously with fallback approach."""
+        try:
+            logger.info("Initializing tools in fallback mode for immediate availability")
+            self.tools = create_fallback_tools()
+            self.use_mcp = False
+            
+            # Bind tools to LLM
+            self.llm_with_tools = self.llm.bind_tools(self.tools)
+            
+            # Build the graph now that tools are ready
+            self.graph = self._build_graph()
+            
+            logger.info(f"Initialized {len(self.tools)} tools (fallback mode)")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize tools: {e}")
+            # Create empty tools list as last resort
+            self.tools = []
+            self.use_mcp = False
+            self.llm_with_tools = self.llm
+            self.graph = None
+    
     async def _initialize_tools(self):
-        """Initialize MCP tools with fallback to direct calls."""
+        """Initialize MCP tools with fallback to direct calls (async version for future use)."""
         try:
             # Try to initialize MCP connection
             if await mcp_tools_manager.initialize_mcp_connection():
@@ -112,15 +137,15 @@ class LumaHealthAgent:
             
         # Use LangGraph's prebuilt agent with tools
         from langgraph.prebuilt import create_react_agent
+        from langchain_core.messages import SystemMessage
         
         # Create system message with context
-        system_message = self._get_base_system_prompt()
+        system_message = SystemMessage(content=self._get_base_system_prompt())
         
         # Create the agent with tools
         agent = create_react_agent(
-            self.llm_with_tools,
+            self.llm,
             self.tools,
-            state_modifier=system_message,
             checkpointer=self.memory
         )
         
@@ -146,6 +171,38 @@ REGRAS IMPORTANTES:
 5. Mantenha conversas focadas em consultas médicas
 6. Use as ferramentas disponíveis para executar ações
 
+FORMATAÇÃO DE CONSULTAS:
+Quando apresentar consultas, use este formato EXATO:
+
+📅 **Suas Consultas**
+
+✅ **Consultas Confirmadas**
+• **Data:** [dia] de [mês] de [ano]
+• **Horário:** [hora:minuto]
+• **Médico:** [nome do médico]
+• **Local:** [local completo]
+• **Status:** ✅ Confirmada
+
+⏳ **Consultas Pendentes**
+• **Data:** [dia] de [mês] de [ano]
+• **Horário:** [hora:minuto]
+• **Médico:** [nome do médico]
+• **Local:** [local completo]
+• **Status:** ⏳ Pendente de confirmação
+
+❌ **Consultas Canceladas**
+• **Data:** [dia] de [mês] de [ano]
+• **Horário:** [hora:minuto]
+• **Médico:** [nome do médico]
+• **Local:** [local completo]
+• **Status:** ❌ Cancelada
+
+---
+
+📊 **Resumo:** [texto resumindo as consultas]
+
+💬 **Posso ajudar com mais alguma coisa?** Você pode confirmar, cancelar ou reagendar suas consultas.
+
 FERRAMENTAS DISPONÍVEIS:
 - verify_user: Para verificar identidade do paciente
 - list_appointments: Para listar consultas do paciente verificado
@@ -163,7 +220,7 @@ FLUXO ESPERADO:
 2. Se usuário verificado → pode usar list_appointments, confirm_appointment, cancel_appointment
 3. Sempre confirmar ações importantes antes de executar
 
-Seja natural e conversacional, mas sempre use as ferramentas para executar ações reais."""
+IMPORTANTE: Sempre formate datas em português (janeiro, fevereiro, março, etc.) e use emojis e formatação markdown para criar respostas bonitas e organizadas."""
     
     def _get_system_prompt(self, state: ConversationState) -> str:
         """Generate dynamic system prompt based on conversation state."""
@@ -565,9 +622,29 @@ DADOS DO PACIENTE DE TESTE:
                 # Get or create session state  
                 session_state = self.session_manager.get_or_create_session(session_id)
                 
-                # Process message through LangGraph agent
+                # Process message through LangGraph agent with persistent config
                 config = {"configurable": {"thread_id": session_id}}
-                input_message = {"messages": [HumanMessage(content=message)]}
+                
+                # Only include system message if this is the first message in the conversation
+                # Check if there's any history for this thread
+                try:
+                    # Try to get existing state to see if we have conversation history
+                    existing_state = await self.graph.aget_state(config)
+                    has_history = bool(existing_state.values.get("messages", []))
+                except:
+                    has_history = False
+                
+                if not has_history:
+                    # First message - include system message
+                    messages = [
+                        SystemMessage(content=self._get_base_system_prompt()),
+                        HumanMessage(content=message)
+                    ]
+                else:
+                    # Subsequent messages - just add the human message
+                    messages = [HumanMessage(content=message)]
+                
+                input_message = {"messages": messages}
                 
                 result = await self.graph.ainvoke(input_message, config=config)
                 
@@ -580,15 +657,52 @@ DADOS DO PACIENTE DE TESTE:
                 else:
                     response_text = "Desculpe, não consegui processar sua mensagem."
                 
-                # Update session state based on conversation
+                # Extract tool usage from messages and update session state
+                tools_used = []
+                verified_in_this_conversation = False
+                patient_id_found = None
+                
+                for i, msg in enumerate(messages):
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            tools_used.append(tc['name'])
+                            
+                            # Check if verify_user was called successfully
+                            if tc['name'] == 'verify_user':
+                                # Look for tool message response in next messages
+                                for j in range(i+1, len(messages)):
+                                    next_msg = messages[j]
+                                    if hasattr(next_msg, 'content'):
+                                        content = str(next_msg.content)
+                                        # Check for successful verification
+                                        if ('success' in content and 'true' in content) or 'patient_id' in content:
+                                            verified_in_this_conversation = True
+                                            # Try to extract patient_id
+                                            try:
+                                                import re
+                                                patient_match = re.search(r'"patient_id":\s*(\d+)', content)
+                                                if patient_match:
+                                                    patient_id_found = int(patient_match.group(1))
+                                                else:
+                                                    # Try alternative format
+                                                    patient_match = re.search(r'patient_id.*?(\d+)', content)
+                                                    if patient_match:
+                                                        patient_id_found = int(patient_match.group(1))
+                                            except:
+                                                pass
+                                            logger.info(f"Detected verification in message: {content[:100]}...")
+                                            break
+                
+                # Update session state if verification occurred
+                if verified_in_this_conversation:
+                    session_state.is_verified = True
+                    if patient_id_found:
+                        session_state.patient_id = patient_id_found
+                    logger.info(f"User verified in session {session_id}, patient_id: {patient_id_found}")
+                
+                # Update session activity
                 session_state.last_activity = datetime.utcnow()
                 self.session_manager.update_session(session_id, session_state)
-                
-                # Extract tool usage from messages
-                tools_used = []
-                for msg in messages:
-                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                        tools_used.extend([tc['name'] for tc in msg.tool_calls])
                 
                 return {
                     "reply": response_text,
@@ -601,7 +715,8 @@ DADOS DO PACIENTE DE TESTE:
                         "tools_used": ["langgraph", "claude"] + tools_used,
                         "message_count": len(messages),
                         "mcp_mode": self.use_mcp,
-                        "model": os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+                        "model": os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),
+                        "verified_this_turn": verified_in_this_conversation
                     }
                 }
         

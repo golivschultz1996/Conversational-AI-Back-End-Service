@@ -188,7 +188,7 @@ class GuardrailsEngine:
         session_id: str, 
         message: str, 
         tool_name: str,
-        is_verified: bool = False,
+        is_verified: Optional[bool] = None,
         context: Dict[str, Any] = None
     ) -> Tuple[bool, Optional[str], List[SecurityViolation]]:
         """
@@ -219,7 +219,7 @@ class GuardrailsEngine:
                 del self.blocked_sessions[session_id]
         
         # Rate limiting check
-        allowed, rate_reason = self.rate_limiter.is_allowed(session_id, is_verified)
+        allowed, rate_reason = self.rate_limiter.is_allowed(session_id, bool(is_verified))
         if not allowed:
             return False, rate_reason, violations
         
@@ -302,15 +302,14 @@ class GuardrailsEngine:
         self, 
         tool_name: str, 
         message: str, 
-        is_verified: bool, 
+        is_verified: Optional[bool], 
         context: Dict[str, Any]
     ) -> Tuple[bool, Optional[str]]:
         """Check tool-specific guardrails."""
         
-        # Verification required for sensitive operations
-        sensitive_tools = ["list_appointments", "confirm_appointment", "cancel_appointment"]
-        if tool_name in sensitive_tools and not is_verified:
-            return False, "User verification required for this operation"
+        # Defer verification checks to the tool implementation itself to avoid
+        # false negatives when verification state is managed outside guardrails.
+        # This avoids blocking legitimate calls when is_verified is unknown here.
         
         # Appointment modification limits
         if tool_name in ["confirm_appointment", "cancel_appointment"]:

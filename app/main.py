@@ -11,9 +11,14 @@ from datetime import datetime
 from typing import Dict, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session
 
 from .db import create_db_and_tables, get_session, seed_database, PatientCRUD, AppointmentCRUD
@@ -25,6 +30,7 @@ from .models import (
 from .session_manager import SessionManager
 from .observability import setup_logging, log_request
 from .graph import LumaHealthAgent
+from .settings import settings
 from .security import guardrails
 
 # Setup structured logging
@@ -49,7 +55,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized and seeded")
     
     # Initialize LangGraph Agent with Claude
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    anthropic_api_key = settings.ANTHROPIC_API_KEY or os.getenv("ANTHROPIC_API_KEY")
     if anthropic_api_key:
         try:
             langgraph_agent = LumaHealthAgent(anthropic_api_key, session_manager)
@@ -77,9 +83,9 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -97,15 +103,347 @@ def format_appointment_response(appointment) -> AppointmentResponse:
     )
 
 
+# Web UI HTML Template
+WEB_UI_HTML = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LumaHealth - Assistente de Consultas</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 600px;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.8rem; margin-bottom: 5px; }
+        .header p { opacity: 0.9; font-size: 0.9rem; }
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            min-height: 300px;
+            max-height: 400px;
+            padding-right: 10px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease-in;
+        }
+        .user-message {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        .bot-message {
+            background: #f1f3f4;
+            color: #333;
+            border-bottom-left-radius: 5px;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-area input:focus { border-color: #007bff; }
+        .input-area button {
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        .input-area button:hover { background: #0056b3; }
+        .input-area button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px 16px;
+            background: #f1f3f4;
+            border-radius: 18px;
+            margin-bottom: 15px;
+            max-width: 80px;
+        }
+        .typing-dots { display: flex; gap: 4px; }
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            animation: typing 1.4s infinite;
+        }
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes typing { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-10px); } }
+        .status { 
+            text-align: center; 
+            color: #666; 
+            font-size: 0.9rem; 
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .welcome {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+        .welcome h3 { color: #007bff; margin-bottom: 10px; }
+        .examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        .example-btn {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+        }
+        .example-btn:hover {
+            background: #bbdefb;
+            transform: translateY(-1px);
+        }
+        .session-info {
+            font-size: 0.8rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 LumaHealth</h1>
+            <p>Assistente de Consultas Inteligente</p>
+        </div>
+        
+        <div class="chat-container">
+            <div class="session-info" id="sessionInfo">Sessão: Iniciando...</div>
+            
+            <div class="welcome" id="welcome">
+                <h3>👋 Bem-vindo!</h3>
+                <p>Sou seu assistente para gerenciamento de consultas médicas.</p>
+                <p><strong>Exemplos do que posso fazer:</strong></p>
+                <div class="examples">
+                    <button class="example-btn" onclick="sendExample('Sou João Silva, nascido em 15/03/1985')">✅ Verificar identidade</button>
+                    <button class="example-btn" onclick="sendExample('Liste minhas consultas')">📋 Ver consultas</button>
+                    <button class="example-btn" onclick="sendExample('Confirmar consulta')">✅ Confirmar</button>
+                    <button class="example-btn" onclick="sendExample('Cancelar consulta')">❌ Cancelar</button>
+                </div>
+            </div>
+            
+            <div class="messages" id="messages"></div>
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Digite sua mensagem..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()" id="sendBtn">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let messageCount = 0;
+        
+        // Initialize session
+        function initSession() {
+            sessionId = 'web-' + Math.random().toString(36).substr(2, 9);
+            document.getElementById('sessionInfo').textContent = `Sessão: ${sessionId.substr(-6)}`;
+        }
+        
+        // Send example message
+        function sendExample(message) {
+            document.getElementById('messageInput').value = message;
+            sendMessage();
+        }
+        
+        // Handle enter key
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+        
+        // Add message to chat
+        function addMessage(content, isUser = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            messageDiv.textContent = content;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Hide welcome after first message
+            if (messageCount === 0) {
+                document.getElementById('welcome').style.display = 'none';
+            }
+            messageCount++;
+        }
+        
+        // Show/hide typing indicator
+        function showTyping(show) {
+            document.getElementById('typingIndicator').style.display = show ? 'block' : 'none';
+            if (show) {
+                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+            }
+        }
+        
+        // Send message to API
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Disable input
+            input.disabled = true;
+            sendBtn.disabled = true;
+            
+            // Add user message
+            addMessage(message, true);
+            input.value = '';
+            
+            // Show typing indicator
+            showTyping(true);
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        message: message
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erro na resposta do servidor');
+                }
+                
+                const data = await response.json();
+                
+                // Hide typing indicator
+                showTyping(false);
+                
+                // Add bot response
+                addMessage(data.reply);
+                
+                // Update session info if verification successful
+                if (data.state && data.state.is_verified) {
+                    document.getElementById('sessionInfo').innerHTML = 
+                        `Sessão: ${sessionId.substr(-6)} <span style="color: green;">✅ Verificado</span>`;
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showTyping(false);
+                addMessage('Desculpe, ocorreu um erro. Tente novamente.');
+            } finally {
+                // Re-enable input
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            initSession();
+            document.getElementById('messageInput').focus();
+        };
+    </script>
+</body>
+</html>
+"""
+
 # REST API Endpoints
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint providing API information."""
+    """Serve the web UI for chat interface."""
+    return WEB_UI_HTML
+
+@app.get("/api/status")
+async def api_status():
+    """API status endpoint for health checks."""
     return {
         "message": "LumaHealth Conversational AI Service",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "status": "running",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "langgraph_enabled": langgraph_agent is not None
     }
 
 

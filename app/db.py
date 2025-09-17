@@ -10,11 +10,12 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlmodel import SQLModel, create_engine, Session, select
 from .models import Patient, Appointment, AppointmentStatus
+from .settings import settings
 
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./clinic.db")
-engine = create_engine(DATABASE_URL, echo=False)
+DATABASE_URL = settings.DATABASE_URL
+engine = create_engine(DATABASE_URL, echo=settings.DB_ECHO)
 
 
 def create_db_and_tables():

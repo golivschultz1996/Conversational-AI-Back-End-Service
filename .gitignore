@@ -21,22 +21,22 @@ wheels/
 *.egg
 MANIFEST
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Virtual environments
+# Virtual Environment
 venv/
 env/
 ENV/
 env.bak/
 venv.bak/
 
+# Environment variables
+.env
+.env.local
+.env.production
+.env.staging
+
 # IDE
 .vscode/
+.cursor/
 .idea/
 *.swp
 *.swo
@@ -51,27 +51,37 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Database (keep for demo, but normally would exclude)
+# *.db
+# *.sqlite
+# *.sqlite3
 
 # Logs
-logs/
 *.log
+logs/
+*.pid
+*.seed
+*.pid.lock
 
-# Test coverage
-.coverage
-.pytest_cache/
+# Coverage
 htmlcov/
+.coverage
+.nyc_output
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Dependencies
+node_modules/
 
 # Temporary files
 tmp/
 temp/
-.tmp/
-
-# Node modules (if using any frontend tools)
-node_modules/
-
-# Documentation builds
-docs/_build/
