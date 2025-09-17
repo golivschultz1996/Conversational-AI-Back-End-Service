@@ -34,13 +34,14 @@ venv.bak/
 .env.production
 .env.staging
 
-# IDE
+# IDE and Editor files
 .vscode/
 .cursor/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
 # OS
 .DS_Store

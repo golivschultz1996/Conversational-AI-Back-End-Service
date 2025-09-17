@@ -446,7 +446,7 @@ def mask_pii(logger, method_name, event_dict):
 ### What it does:
 - Centralized configuration management
 - Environment-based settings
-- Google Cloud Run compatibility
+- Production deployment compatibility
 
 ### Key Frameworks Used:
 - **Pydantic Settings**: Type-safe configuration
@@ -466,7 +466,7 @@ class Settings(BaseSettings):
     
     # Server Configuration
     HOST: str = Field(default="0.0.0.0")
-    PORT: int = Field(default=8080)  # Cloud Run standard
+    PORT: int = Field(default=8080)  # Standard HTTP port
     
     # Security Configuration
     RATE_LIMIT_VERIFIED_PER_MIN: int = Field(default=30)
@@ -475,9 +475,9 @@ class Settings(BaseSettings):
 
 #### Cloud Detection:
 ```python
-def is_cloud_run(self) -> bool:
-    """Detect if running in Google Cloud Run"""
-    return os.getenv("K_SERVICE") is not None
+def is_production(self) -> bool:
+    """Detect if running in production environment"""
+    return self.ENVIRONMENT.lower() == "production"
 ```
 
 ---
@@ -493,7 +493,7 @@ FROM python:3.11-slim
 RUN useradd --create-home --shell /bin/bash app
 USER app
 
-# Health check for Cloud Run
+# Health check for production
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
@@ -501,14 +501,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
 ```
 
-### Google Cloud Run Deployment (`deploy.sh`):
+### Production Deployment:
 ```bash
-# Automated deployment script
-gcloud run deploy lumahealth-api \
-    --image gcr.io/${PROJECT_ID}/lumahealth-api \
-    --platform managed \
-    --region us-central1 \
-    --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
+# Docker deployment
+docker build -t lumahealth-api .
+docker run -p 8080:8080 -e ANTHROPIC_API_KEY=your_key lumahealth-api
+
+# Docker Compose
+docker-compose up --build
 ```
 
 ---
@@ -586,9 +586,9 @@ DEBUG=false
 DATABASE_URL=sqlite:///./clinic.db
 ```
 
-### Google Cloud Run:
+### Docker Deployment:
 ```bash
-./deploy.sh your-project-id us-central1
+docker-compose up --build
 ```
 
 ---

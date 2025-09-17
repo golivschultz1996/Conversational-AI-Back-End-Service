@@ -8,7 +8,7 @@ LumaHealth is a production-ready conversational AI system designed for healthcar
 
 - **Conversational AI**: Natural language appointment management
 - **Security-First**: PII protection and robust authentication
-- **Cloud-Native**: Optimized for Google Cloud Run deployment
+- **Cloud-Native**: Optimized for containerized deployment
 - **Observable**: Comprehensive logging and monitoring
 - **Scalable**: Horizontal scaling with stateless design
 
@@ -25,7 +25,7 @@ LumaHealth is a production-ready conversational AI system designed for healthcar
                     ┌────────────▼────────────┐
                     │                         │
                     │     LumaHealth API      │
-                    │   (Google Cloud Run)    │
+                    │   (Docker Container)    │
                     │                         │
                     └────────────┬────────────┘
                                  │
@@ -62,8 +62,6 @@ app/
 ```
 ├── Dockerfile           # 🐳 Production container
 ├── docker-compose.yml   # 🔧 Local development
-├── cloudbuild.yaml      # ☁️  Google Cloud Build
-├── deploy.sh            # 🚀 Deployment automation
 └── .dockerignore        # 📋 Container optimization
 ```
 
@@ -93,8 +91,8 @@ async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_session)
 - **Purpose**: Centralized, type-safe configuration
 - **Features**:
   - Environment-based configuration
-  - Cloud Run auto-detection
-  - Google Secret Manager integration
+  - Production environment detection
+  - Environment variable configuration
   - Production/development modes
 
 **Code Example**:
@@ -104,8 +102,8 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: str = Field(default="claude-3-5-sonnet-20241022")
     ENVIRONMENT: str = Field(default="development")
     
-    def is_cloud_run(self) -> bool:
-        return os.getenv("K_SERVICE") is not None
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 ```
 
 ### Conversation Engine (`graph.py`)
@@ -244,12 +242,12 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
 
 ## ☁️ Deployment Architecture
 
-### Google Cloud Run Configuration
+### Production Deployment Configuration
 - **Container**: Single container deployment
-- **Scaling**: 0-10 instances (configurable)
+- **Scaling**: Configurable instances
 - **Resources**: 1 CPU, 1GB RAM
 - **Network**: Public HTTPS endpoint
-- **Secrets**: Anthropic API key via Secret Manager
+- **Secrets**: Environment variable configuration
 
 ### Production Optimizations
 - **Non-root container user** for security
@@ -260,7 +258,7 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
 
 ### Database Strategy
 - **Current**: SQLite in container (stateless-friendly)
-- **Production Option**: Google Cloud SQL (PostgreSQL)
+- **Production Option**: PostgreSQL or other cloud databases
 - **Migration Path**: DATABASE_URL configuration switch
 
 **Database URL Examples**:
@@ -268,14 +266,14 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
 # SQLite (current)
 DATABASE_URL=sqlite:///./clinic.db
 
-# PostgreSQL (Cloud SQL)
+# PostgreSQL (Production)
 DATABASE_URL=postgresql://user:pass@host:5432/lumahealth
 ```
 
 ## 🔐 Security Architecture
 
 ### Multi-Layer Security Model
-1. **Transport**: HTTPS (Cloud Run default)
+1. **Transport**: HTTPS (production default)
 2. **Authentication**: Patient verification via name + DOB
 3. **Authorization**: Session-based access control
 4. **Rate Limiting**: Per-session and global limits
@@ -321,15 +319,15 @@ DATABASE_URL=postgresql://user:pass@host:5432/lumahealth
 
 ### Current Architecture Benefits
 - **Stateless Design**: Session data can be externalized
-- **Horizontal Scaling**: Cloud Run auto-scaling
+- **Horizontal Scaling**: Container auto-scaling
 - **Database Independence**: SQLite → PostgreSQL migration path
 - **Tool Modularity**: MCP tools can be distributed
 
 ### Future Scaling Options
-1. **Database**: Migrate to Cloud SQL or Firestore
+1. **Database**: Migrate to PostgreSQL or other production databases
 2. **Session Store**: Redis for shared session state
 3. **Tool Distribution**: Separate MCP services
-4. **Load Balancing**: Multiple Cloud Run services
+4. **Load Balancing**: Multiple container instances
 5. **Caching**: Response caching for common queries
 
 ## 🔄 Development Workflow
@@ -360,10 +358,10 @@ uvicorn app.main:app --reload --port 8080
 docker-compose up --build
 
 # Production deployment
-./deploy.sh your-project-id us-central1
+docker-compose up --build
 
 # Monitoring
-gcloud logs tail --follow --service=lumahealth-api
+docker-compose logs -f
 ```
 
 ## 📈 Future Architecture Evolution

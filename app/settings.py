@@ -47,20 +47,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_VERIFIED_PER_MIN: int = Field(default=30, description="Rate limit for verified users")
     RATE_LIMIT_UNVERIFIED_PER_MIN: int = Field(default=10, description="Rate limit for unverified users")
     
-    # Google Cloud Configuration
-    GOOGLE_CLOUD_PROJECT: str | None = Field(default=None, description="Google Cloud project ID")
-    USE_SECRET_MANAGER: bool = Field(default=False, description="Use Google Secret Manager for secrets")
-    
     # Health Check Configuration
-    STARTUP_TIMEOUT_SECONDS: int = Field(default=300, description="Startup timeout for Cloud Run")
+    STARTUP_TIMEOUT_SECONDS: int = Field(default=300, description="Startup timeout for production")
     
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.ENVIRONMENT.lower() == "production"
-    
-    def is_cloud_run(self) -> bool:
-        """Check if running in Google Cloud Run."""
-        return os.getenv("K_SERVICE") is not None
 
 
 @lru_cache
