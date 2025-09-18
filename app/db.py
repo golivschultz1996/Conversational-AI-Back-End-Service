@@ -49,6 +49,16 @@ class PatientCRUD:
         return session.exec(statement).first()
     
     @staticmethod
+    def get_by_name_dob_and_phone(session: Session, full_name: str, dob: str, phone: str) -> Optional[Patient]:
+        """Get patient by full name, date of birth, and phone number."""
+        statement = select(Patient).where(
+            Patient.full_name == full_name,
+            Patient.dob == dob,
+            Patient.phone == phone
+        )
+        return session.exec(statement).first()
+    
+    @staticmethod
     def create(session: Session, full_name: str, dob: str, phone: str) -> Patient:
         """Create a new patient."""
         phone_hash = Patient.hash_phone(phone)
