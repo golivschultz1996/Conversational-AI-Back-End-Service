@@ -154,52 +154,52 @@ class LumaHealthAgent:
     
     def _get_base_system_prompt(self) -> str:
         """Get the base system prompt for the agent."""
-        return """Você é um assistente virtual da LumaHealth, especializado em ajudar pacientes com consultas médicas.
+        return """You are a virtual assistant for LumaHealth, specialized in helping patients with medical appointments.
 
-SUAS CAPACIDADES:
-- Verificar identidade de pacientes (nome completo + data de nascimento)
-- Listar consultas agendadas
-- Confirmar consultas pendentes
-- Cancelar consultas quando solicitado
-- Fornecer informações sobre consultas
+YOUR CAPABILITIES:
+- Verify patient identity (full name + date of birth)
+- List scheduled appointments
+- Confirm pending appointments
+- Cancel appointments when requested
+- Provide information about appointments
 
-REGRAS IMPORTANTES:
-1. SEMPRE verifique a identidade antes de mostrar informações médicas
-2. Seja empático e profissional
-3. Confirme ações importantes antes de executá-las
-4. Se não entender algo, peça esclarecimentos
-5. Mantenha conversas focadas em consultas médicas
-6. Use as ferramentas disponíveis para executar ações
+IMPORTANT RULES:
+1. ALWAYS verify identity before showing medical information
+2. Be empathetic and professional
+3. Confirm important actions before executing them
+4. If you don't understand something, ask for clarification
+5. Keep conversations focused on medical appointments
+6. Use available tools to execute actions
 
-FORMATAÇÃO DE CONSULTAS:
-Quando apresentar consultas, use este formato EXATO:
+APPOINTMENT FORMATTING:
+When presenting appointments, use this EXACT format:
 
-📅 **Suas Consultas**
+📅 **Your Appointments**
 
-✅ **Consultas Confirmadas**
-• **Data:** [dia] de [mês] de [ano]
-• **Horário:** [hora:minuto]
-• **Médico:** [nome do médico]
-• **Local:** [local completo]
-• **Status:** ✅ Confirmada
+✅ **Confirmed Appointments**
+• **Date:** [day] of [month] [year]
+• **Time:** [hour:minute]
+• **Doctor:** [doctor name]
+• **Location:** [complete location]
+• **Status:** ✅ Confirmed
 
-⏳ **Consultas Pendentes**
-• **Data:** [dia] de [mês] de [ano]
-• **Horário:** [hora:minuto]
-• **Médico:** [nome do médico]
-• **Local:** [local completo]
-• **Status:** ⏳ Pendente de confirmação
+⏳ **Pending Appointments**
+• **Date:** [day] of [month] [year]
+• **Time:** [hour:minute]
+• **Doctor:** [doctor name]
+• **Location:** [complete location]
+• **Status:** ⏳ Pending confirmation
 
-❌ **Consultas Canceladas**
-• **Data:** [dia] de [mês] de [ano]
-• **Horário:** [hora:minuto]
-• **Médico:** [nome do médico]
-• **Local:** [local completo]
-• **Status:** ❌ Cancelada
+❌ **Cancelled Appointments**
+• **Date:** [day] of [month] [year]
+• **Time:** [hour:minute]
+• **Doctor:** [doctor name]
+• **Location:** [complete location]
+• **Status:** ❌ Cancelled
 
 ---
 
-📊 **Resumo:** [texto resumindo as consultas]
+📊 **Summary:** [text summarizing the appointments]
 
 💬 **Can I help you with anything else?** You can confirm, cancel or reschedule your appointments.
 
@@ -210,41 +210,41 @@ AVAILABLE TOOLS:
 - cancel_appointment: To cancel appointments
 - get_session_info: To check session status
 
-DADOS DO PACIENTE DE TESTE:
-- Nome: João Silva
-- Data de nascimento: 15/03/1985
-- Tem consultas agendadas disponíveis
+TEST PATIENT DATA:
+- Name: John Silva
+- Date of birth: 03/15/1985
+- Has scheduled appointments available
 
-FLUXO ESPERADO:
-1. Se usuário não verificado → pedir nome e data de nascimento → usar verify_user
-2. Se usuário verificado → pode usar list_appointments, confirm_appointment, cancel_appointment
-3. Sempre confirmar ações importantes antes de executar
+EXPECTED FLOW:
+1. If user not verified → ask for name and date of birth → use verify_user
+2. If user verified → can use list_appointments, confirm_appointment, cancel_appointment
+3. Always confirm important actions before executing
 
-IMPORTANTE: Sempre formate datas em português (janeiro, fevereiro, março, etc.) e use emojis e formatação markdown para criar respostas bonitas e organizadas."""
+IMPORTANT: Always format dates in English (January, February, March, etc.) and use emojis and markdown formatting to create beautiful and organized responses."""
     
     def _get_system_prompt(self, state: ConversationState) -> str:
         """Generate dynamic system prompt based on conversation state."""
         
-        base_prompt = """Você é um assistente virtual da LumaHealth, especializado em ajudar pacientes com consultas médicas.
+        base_prompt = """You are a virtual assistant for LumaHealth, specialized in helping patients with medical appointments.
 
-SUAS CAPACIDADES:
-- Verificar identidade de pacientes (nome completo + data de nascimento)
-- Listar consultas agendadas
-- Confirmar consultas pendentes
-- Cancelar consultas quando solicitado
-- Fornecer informações sobre consultas
+YOUR CAPABILITIES:
+- Verify patient identity (full name + date of birth)
+- List scheduled appointments
+- Confirm pending appointments
+- Cancel appointments when requested
+- Provide information about appointments
 
-REGRAS IMPORTANTES:
-1. SEMPRE verifique a identidade antes de mostrar informações médicas
-2. Seja empático e profissional
-3. Confirme ações importantes antes de executá-las
-4. Se não entender algo, peça esclarecimentos
-5. Mantenha conversas focadas em consultas médicas
+IMPORTANT RULES:
+1. ALWAYS verify identity before showing medical information
+2. Be empathetic and professional
+3. Confirm important actions before executing them
+4. If you don't understand something, ask for clarification
+5. Keep conversations focused on medical appointments
 
-DADOS DO PACIENTE DE TESTE:
-- Nome: João Silva
-- Data de nascimento: 15/03/1985
-- Tem consultas agendadas disponíveis
+TEST PATIENT DATA:
+- Name: John Silva
+- Date of birth: 03/15/1985
+- Has scheduled appointments available
 
 """
         
@@ -285,18 +285,18 @@ DADOS DO PACIENTE DE TESTE:
                 # Analyze message for intent and context
                 if not state.get("is_verified"):
                     # Check if message contains identification info
-                    if any(keyword in message_content for keyword in ["sou", "me chamo", "nascido", "nascida", "nasci"]):
+                    if any(keyword in message_content for keyword in ["i am", "my name", "born", "birth"]):
                         return {**state, "conversation_stage": "verification", "last_intent": "verify_user"}
                     else:
                         return {**state, "conversation_stage": "greeting", "last_intent": "greeting"}
                 
                 else:
                     # User is verified, analyze intent
-                    if any(keyword in message_content for keyword in ["consultas", "appointments", "listar", "mostrar"]):
+                    if any(keyword in message_content for keyword in ["appointments", "list", "show", "schedule"]):
                         return {**state, "conversation_stage": "authenticated", "last_intent": "list_appointments"}
-                    elif any(keyword in message_content for keyword in ["confirmar", "confirm"]):
+                    elif any(keyword in message_content for keyword in ["confirm", "accept"]):
                         return {**state, "conversation_stage": "authenticated", "last_intent": "confirm_appointment"}
-                    elif any(keyword in message_content for keyword in ["cancelar", "cancel"]):
+                    elif any(keyword in message_content for keyword in ["cancel", "remove"]):
                         return {**state, "conversation_stage": "authenticated", "last_intent": "cancel_appointment"}
                     else:
                         return {**state, "conversation_stage": "authenticated", "last_intent": "general_query"}
@@ -427,7 +427,7 @@ DADOS DO PACIENTE DE TESTE:
                         **appointment_ref
                     })
                 else:
-                    result = {"success": False, "message": "Ação não reconhecida"}
+                    result = {"success": False, "message": "Action not recognized"}
                 
                 return {
                     **state,
@@ -481,24 +481,24 @@ DADOS DO PACIENTE DE TESTE:
                 if "verification_result" in metadata:
                     result = metadata["verification_result"]
                     if result.get("success"):
-                        context_msg = "O usuário foi verificado com sucesso. Agora pode acessar suas consultas."
+                        context_msg = "User was successfully verified. Can now access appointments."
                     else:
-                        context_msg = f"Falha na verificação: {result.get('message', 'Dados incorretos')}"
-                    messages.append(SystemMessage(content=f"CONTEXTO: {context_msg}"))
+                        context_msg = f"Verification failed: {result.get('message', 'Incorrect data')}"
+                    messages.append(SystemMessage(content=f"CONTEXT: {context_msg}"))
                 
                 if "last_appointment_list" in metadata:
                     appointments = metadata["last_appointment_list"]
                     if appointments and not any("error" in apt for apt in appointments):
                         apt_summary = "\\n".join([
-                            f"- {apt['date']} às {apt['time']} - {apt['doctor']} ({apt['status']})"
+                            f"- {apt['date']} at {apt['time']} - {apt['doctor']} ({apt['status']})"
                             for apt in appointments[:5]  # Limit to first 5
                         ])
-                        messages.append(SystemMessage(content=f"CONSULTAS ATUAIS:\\n{apt_summary}"))
+                        messages.append(SystemMessage(content=f"CURRENT APPOINTMENTS:\\n{apt_summary}"))
                 
                 if "appointment_action_result" in metadata:
                     result = metadata["appointment_action_result"]
-                    action_context = f"Resultado da ação: {result.get('message', 'Ação processada')}"
-                    messages.append(SystemMessage(content=f"CONTEXTO: {action_context}"))
+                    action_context = f"Action result: {result.get('message', 'Action processed')}"
+                    messages.append(SystemMessage(content=f"CONTEXT: {action_context}"))
                 
                 # Generate response with Claude
                 response = await self.llm.ainvoke(messages)
@@ -512,7 +512,7 @@ DADOS DO PACIENTE DE TESTE:
         except Exception as e:
             logger.error(f"Error generating response: {e}", exc_info=True)
             # Fallback response
-            fallback_response = AIMessage(content="Desculpe, houve um problema. Pode tentar novamente?")
+            fallback_response = AIMessage(content="Sorry, there was a problem. Can you try again?")
             return {
                 **state,
                 "messages": [fallback_response],
@@ -527,8 +527,8 @@ DADOS DO PACIENTE DE TESTE:
         
         # Extract name patterns
         name_patterns = [
-            r"(?:eu sou|me chamo|meu nome é|sou)\\s+([A-ZÁÉÍÓÚÀÂÊÔÃÇ][a-záéíóúàâêôãç]+(?:\\s+[A-ZÁÉÍÓÚÀÂÊÔÃÇ][a-záéíóúàâêôãç]+)*)",
-            r"([A-ZÁÉÍÓÚÀÂÊÔÃÇ][a-záéíóúàâêôãç]+\\s+[A-ZÁÉÍÓÚÀÂÊÔÃÇ][a-záéíóúàâêôãç]+)(?=.*(?:nascido|nascida|nasci))"
+            r"(?:i am|my name is|i'm)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)",
+            r"([A-Z][a-z]+\\s+[A-Z][a-z]+)(?=.*(?:born|birth))"
         ]
         
         for pattern in name_patterns:
@@ -541,8 +541,8 @@ DADOS DO PACIENTE DE TESTE:
         date_patterns = [
             r"(\\d{1,2}/\\d{1,2}/\\d{4})",
             r"(\\d{4}-\\d{2}-\\d{2})",
-            r"(?:nascido|nascida|nasci).*?(\\d{1,2}/\\d{1,2}/\\d{4})",
-            r"(?:em|dia)\\s+(\\d{1,2}/\\d{1,2}/\\d{4})"
+            r"(?:born|birth).*?(\\d{1,2}/\\d{1,2}/\\d{4})",
+            r"(?:on|in)\\s+(\\d{1,2}/\\d{1,2}/\\d{4})"
         ]
         
         for pattern in date_patterns:
@@ -571,12 +571,12 @@ DADOS DO PACIENTE DE TESTE:
         if id_match:
             return {"appointment_id": int(id_match.group(1))}
         
-        # Look for ordinal references (primeira, segunda, etc.)
+        # Look for ordinal references (first, second, etc.)
         ordinals = {
-            "primeira": 0, "primeiro": 0, "1a": 0, "1o": 0,
-            "segunda": 1, "segundo": 1, "2a": 1, "2o": 1,
-            "terceira": 2, "terceiro": 2, "3a": 2, "3o": 2,
-            "última": -1, "ultimo": -1
+            "first": 0, "1st": 0,
+            "second": 1, "2nd": 1,
+            "third": 2, "3rd": 2,
+            "last": -1
         }
         
         for ordinal, index in ordinals.items():
@@ -592,7 +592,7 @@ DADOS DO PACIENTE DE TESTE:
             return {"date": date_match.group(1)}
         
         # Look for relative date references
-        if "amanhã" in message_lower or "amanha" in message_lower:
+        if "tomorrow" in message_lower:
             from datetime import date, timedelta
             tomorrow = (date.today() + timedelta(days=1)).isoformat()
             return {"date": tomorrow}
@@ -614,7 +614,7 @@ DADOS DO PACIENTE DE TESTE:
                 # Wait for graph to be ready
                 if not self.graph:
                     return {
-                        "reply": "Sistema ainda inicializando, tente novamente em alguns segundos...",
+                        "reply": "System still initializing, please try again in a few seconds...",
                         "state": {"is_verified": False, "initializing": True},
                         "observability": {"error": "graph_not_ready", "tools_used": []}
                     }
@@ -655,7 +655,7 @@ DADOS DO PACIENTE DE TESTE:
                 if last_message and hasattr(last_message, 'content'):
                     response_text = last_message.content
                 else:
-                    response_text = "Desculpe, não consegui processar sua mensagem."
+                    response_text = "Sorry, I couldn't process your message."
                 
                 # Extract tool usage from messages and update session state
                 tools_used = []
@@ -723,7 +723,7 @@ DADOS DO PACIENTE DE TESTE:
         except Exception as e:
             logger.error(f"Error in process_conversation: {e}", exc_info=True)
             return {
-                "reply": "Desculpe, houve um erro interno. Pode tentar novamente?",
+                "reply": "Sorry, there was an internal error. Can you try again?",
                 "state": {"is_verified": False, "error": str(e)},
                 "observability": {"error": str(e), "tools_used": ["error_handler"]}
             }
