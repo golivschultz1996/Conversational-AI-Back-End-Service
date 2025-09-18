@@ -11,7 +11,7 @@ The easiest way to run this is with Docker:
 ```bash
 # Clone and enter the project
 git clone <your-repo>
-cd LumaHealth
+cd your-folder
 
 # Set your API key (modify env.example with your credentials)
 cp env.example .env
