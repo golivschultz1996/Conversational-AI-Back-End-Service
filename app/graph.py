@@ -211,8 +211,9 @@ AVAILABLE TOOLS:
 - get_session_info: To check session status
 
 TEST PATIENT DATA:
-- Name: John Silva
-- Date of birth: 03/15/1985
+- Name: Maria Santos
+- Date of birth: 07/22/1990
+- Phone: +5511876543210
 - Has scheduled appointments available
 
 EXPECTED FLOW:
@@ -242,8 +243,9 @@ IMPORTANT RULES:
 5. Keep conversations focused on medical appointments
 
 TEST PATIENT DATA:
-- Name: John Silva
-- Date of birth: 03/15/1985
+- Name: Maria Santos
+- Date of birth: 07/22/1990
+- Phone: +5511876543210
 - Has scheduled appointments available
 
 """
@@ -285,7 +287,7 @@ TEST PATIENT DATA:
                 # Analyze message for intent and context
                 if not state.get("is_verified"):
                     # Check if message contains identification info
-                    if any(keyword in message_content for keyword in ["i am", "my name", "born", "birth"]):
+                    if any(keyword in message_content for keyword in ["i am", "my name", "born", "birth", "phone"]):
                         return {**state, "conversation_stage": "verification", "last_intent": "verify_user"}
                     else:
                         return {**state, "conversation_stage": "greeting", "last_intent": "greeting"}
@@ -337,19 +339,20 @@ TEST PATIENT DATA:
                 # Import MCP verification tool
                 from .mcp_server import verify_user_tool
                 
-                # Extract name and DOB from message
+                # Extract name, DOB, and phone from message
                 latest_message = state["messages"][-1]
                 message_content = latest_message.content
                 
                 # Simple extraction (could be enhanced with NER)
                 extracted_info = self._extract_user_info(message_content)
                 
-                if extracted_info.get("name") and extracted_info.get("dob"):
+                if extracted_info.get("name") and extracted_info.get("dob") and extracted_info.get("phone"):
                     # Call MCP verification tool
                     result = await verify_user_tool({
                         "session_id": state["session_id"],
                         "full_name": extracted_info["name"],
-                        "dob": extracted_info["dob"]
+                        "dob": extracted_info["dob"],
+                        "phone": extracted_info["phone"]
                     })
                     
                     if result.get("success"):
@@ -556,6 +559,23 @@ TEST PATIENT DATA:
                         result["dob"] = f"{parts[2]}-{parts[1]:0>2}-{parts[0]:0>2}"
                 else:
                     result["dob"] = date_str
+                break
+        
+        # Extract phone patterns
+        phone_patterns = [
+            r"(\+?55\d{2}\d{8,9})",  # Brazilian format +5511987654321
+            r"(\+?\d{1,3}\d{10,11})",  # General international format
+            r"phone.*?(\+?\d[\d\s\-\(\)]{8,15})",  # After word "phone"
+            r"(\+?\d{3,4}[\s\-]?\d{8,9})"  # Area code + number
+        ]
+        
+        for pattern in phone_patterns:
+            match = re.search(pattern, message)
+            if match:
+                phone_str = match.group(1).strip()
+                # Clean phone number (remove spaces, dashes, parentheses)
+                phone_clean = re.sub(r'[\s\-\(\)]', '', phone_str)
+                result["phone"] = phone_clean
                 break
         
         return result

@@ -135,22 +135,23 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 @with_guardrails("verify_user")
 async def verify_user_tool(args: dict) -> Dict[str, Any]:
     """
-    Verify user identity using full name and date of birth.
+    Verify user identity using full name, date of birth, and phone number.
     """
     session_id = args.get("session_id")
     full_name = args.get("full_name")
     dob = args.get("dob")
+    phone = args.get("phone")
     
-    if not all([session_id, full_name, dob]):
+    if not all([session_id, full_name, dob, phone]):
         return {
             "success": False,
-            "message": "Missing required parameters: session_id, full_name, dob"
+            "message": "Missing required parameters: session_id, full_name, dob, phone"
         }
     
     try:
         with Session(engine) as db:
-            # Look up patient by name and DOB
-            patient = PatientCRUD.get_by_name_and_dob(db, full_name, dob)
+            # Look up patient by name, DOB, and phone
+            patient = PatientCRUD.get_by_name_dob_and_phone(db, full_name, dob, phone)
             
             if patient:
                 # Update session state
@@ -163,7 +164,7 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
                 
                 return {
                     "success": True,
-                    "message": "Verificação realizada com sucesso!",
+                    "message": "Identity verification successful!",
                     "patient_id": patient.id,
                     "session_verified": True
                 }
@@ -172,7 +173,7 @@ async def verify_user_tool(args: dict) -> Dict[str, Any]:
                 
                 return {
                     "success": False,
-                    "message": "Não foi possível verificar sua identidade. Verifique os dados informados.",
+                    "message": "Unable to verify your identity. Please check the name, date of birth, and phone number provided.",
                     "session_verified": False
                 }
                 

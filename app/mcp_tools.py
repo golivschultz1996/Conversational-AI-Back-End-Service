@@ -24,6 +24,7 @@ class VerifyUserInput(BaseModel):
     session_id: str = Field(description="Unique session identifier")
     full_name: str = Field(description="Patient's full name")
     dob: str = Field(description="Date of birth in YYYY-MM-DD format")
+    phone: str = Field(description="Phone number with area code")
 
 
 class ListAppointmentsInput(BaseModel):
@@ -97,12 +98,12 @@ class MCPToolsManager:
         """Create LangChain-compatible tools from MCP tools."""
         
         # Verify User Tool
-        async def verify_user_mcp(session_id: str, full_name: str, dob: str) -> Dict[str, Any]:
+        async def verify_user_mcp(session_id: str, full_name: str, dob: str, phone: str) -> Dict[str, Any]:
             """Verify user identity using MCP protocol."""
             try:
                 result = await self.mcp_session.call_tool(
                     "verify_user",
-                    {"session_id": session_id, "full_name": full_name, "dob": dob}
+                    {"session_id": session_id, "full_name": full_name, "dob": dob, "phone": phone}
                 )
                 return eval(result.content[0].text) if result.content else {"error": "No response"}
             except Exception as e:
@@ -186,7 +187,7 @@ class MCPToolsManager:
             StructuredTool.from_function(
                 func=verify_user_mcp,
                 name="verify_user",
-                description="Verify user identity using full name and date of birth",
+                description="Verify user identity using full name, date of birth, and phone number",
                 args_schema=VerifyUserInput,
                 return_direct=False
             ),
@@ -240,13 +241,14 @@ class MCPToolsManager:
 
 
 # Fallback functions for when MCP is not available
-async def verify_user_fallback(session_id: str, full_name: str, dob: str) -> Dict[str, Any]:
+async def verify_user_fallback(session_id: str, full_name: str, dob: str, phone: str) -> Dict[str, Any]:
     """Fallback verify user function when MCP is not available."""
     from .mcp_server import verify_user_tool
     return await verify_user_tool({
         "session_id": session_id,
         "full_name": full_name, 
-        "dob": dob
+        "dob": dob,
+        "phone": phone
     })
 
 
@@ -298,7 +300,7 @@ def create_fallback_tools() -> List[BaseTool]:
         StructuredTool.from_function(
             func=verify_user_fallback,
             name="verify_user",
-            description="Verify user identity using full name and date of birth",
+            description="Verify user identity using full name, date of birth, and phone number",
             args_schema=VerifyUserInput,
             return_direct=False,
             coroutine=verify_user_fallback  # Add coroutine parameter for async
