@@ -201,14 +201,14 @@ Quando apresentar consultas, use este formato EXATO:
 
 📊 **Resumo:** [texto resumindo as consultas]
 
-💬 **Posso ajudar com mais alguma coisa?** Você pode confirmar, cancelar ou reagendar suas consultas.
+💬 **Can I help you with anything else?** You can confirm, cancel or reschedule your appointments.
 
-FERRAMENTAS DISPONÍVEIS:
-- verify_user: Para verificar identidade do paciente
-- list_appointments: Para listar consultas do paciente verificado
-- confirm_appointment: Para confirmar consultas pendentes
-- cancel_appointment: Para cancelar consultas
-- get_session_info: Para verificar status da sessão
+AVAILABLE TOOLS:
+- verify_user: To verify patient identity
+- list_appointments: To list appointments for verified patient
+- confirm_appointment: To confirm pending appointments
+- cancel_appointment: To cancel appointments
+- get_session_info: To check session status
 
 DADOS DO PACIENTE DE TESTE:
 - Nome: João Silva
@@ -250,17 +250,17 @@ DADOS DO PACIENTE DE TESTE:
         
         # Add context based on conversation stage
         if state.get("conversation_stage") == "greeting":
-            base_prompt += "\nSITUAÇÃO ATUAL: Paciente iniciou conversa. Precisa verificar identidade primeiro."
+            base_prompt += "\nCURRENT SITUATION: Patient started conversation. Need to verify identity first."
         
         elif state.get("conversation_stage") == "verification":
-            base_prompt += "\nSITUAÇÃO ATUAL: Processo de verificação em andamento. Aguarde nome e data de nascimento."
+            base_prompt += "\nCURRENT SITUATION: Verification process ongoing. Waiting for name and date of birth."
         
         elif state.get("is_verified") and state.get("patient_id"):
-            base_prompt += f"\nSITUAÇÃO ATUAL: Paciente verificado (ID: {state.get('patient_id')}). Pode acessar consultas."
+            base_prompt += f"\nCURRENT SITUATION: Patient verified (ID: {state.get('patient_id')}). Can access appointments."
             
             if state.get("appointments_context"):
                 appointments = state["appointments_context"]
-                base_prompt += f"\nCONSULTAS CONHECIDAS: {len(appointments)} consulta(s) no contexto."
+                base_prompt += f"\nKNOWN APPOINTMENTS: {len(appointments)} appointment(s) in context."
         
         return base_prompt
     

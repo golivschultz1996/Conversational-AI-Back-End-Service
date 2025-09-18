@@ -277,21 +277,21 @@ WEB_UI_HTML = """
     <div class="container">
         <div class="header">
             <h1>🏥 LumaHealth</h1>
-            <p>Assistente de Consultas Inteligente</p>
+            <p>Intelligent Appointment Assistant</p>
         </div>
         
         <div class="chat-container">
-            <div class="session-info" id="sessionInfo">Sessão: Iniciando...</div>
+            <div class="session-info" id="sessionInfo">Session: Starting...</div>
             
             <div class="welcome" id="welcome">
-                <h3>👋 Bem-vindo!</h3>
-                <p>Sou seu assistente para gerenciamento de consultas médicas.</p>
-                <p><strong>Exemplos do que posso fazer:</strong></p>
+                <h3>👋 Welcome!</h3>
+                <p>I'm your assistant for medical appointment management.</p>
+                <p><strong>Examples of what I can do:</strong></p>
                 <div class="examples">
-                    <button class="example-btn" onclick="sendExample('Sou João Silva, nascido em 15/03/1985')">✅ Verificar identidade</button>
-                    <button class="example-btn" onclick="sendExample('Liste minhas consultas')">📋 Ver consultas</button>
-                    <button class="example-btn" onclick="sendExample('Confirmar consulta')">✅ Confirmar</button>
-                    <button class="example-btn" onclick="sendExample('Cancelar consulta')">❌ Cancelar</button>
+                    <button class="example-btn" onclick="sendExample('I am John Silva, born on 03/15/1985')">✅ Verify identity</button>
+                    <button class="example-btn" onclick="sendExample('List my appointments')">📋 View appointments</button>
+                    <button class="example-btn" onclick="sendExample('Confirm appointment')">✅ Confirm</button>
+                    <button class="example-btn" onclick="sendExample('Cancel appointment')">❌ Cancel</button>
                 </div>
             </div>
             
@@ -304,8 +304,8 @@ WEB_UI_HTML = """
             </div>
             
             <div class="input-area">
-                <input type="text" id="messageInput" placeholder="Digite sua mensagem..." onkeypress="handleKeyPress(event)">
-                <button onclick="sendMessage()" id="sendBtn">Enviar</button>
+                <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()" id="sendBtn">Send</button>
             </div>
         </div>
     </div>
@@ -317,7 +317,7 @@ WEB_UI_HTML = """
         // Initialize session
         function initSession() {
             sessionId = 'web-' + Math.random().toString(36).substr(2, 9);
-            document.getElementById('sessionInfo').textContent = `Sessão: ${sessionId.substr(-6)}`;
+            document.getElementById('sessionInfo').textContent = `Session: ${sessionId.substr(-6)}`;
         }
         
         // Send example message
@@ -390,7 +390,7 @@ WEB_UI_HTML = """
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Erro na resposta do servidor');
+                    throw new Error('Server response error');
                 }
                 
                 const data = await response.json();
@@ -404,13 +404,13 @@ WEB_UI_HTML = """
                 // Update session info if verification successful
                 if (data.state && data.state.is_verified) {
                     document.getElementById('sessionInfo').innerHTML = 
-                        `Sessão: ${sessionId.substr(-6)} <span style="color: green;">✅ Verificado</span>`;
+                        `Session: ${sessionId.substr(-6)} <span style="color: green;">✅ Verified</span>`;
                 }
                 
             } catch (error) {
                 console.error('Error:', error);
                 showTyping(false);
-                addMessage('Desculpe, ocorreu um erro. Tente novamente.');
+                addMessage('Sorry, an error occurred. Please try again.');
             } finally {
                 // Re-enable input
                 input.disabled = false;
@@ -543,11 +543,11 @@ async def chat_endpoint(
             
             # Process based on intent
             if intent == "verify_user":
-                reply = "Para verificar sua identidade, preciso do seu nome completo e data de nascimento. Por favor, forneça essas informações."
+                reply = "To verify your identity, I need your full name and date of birth. Please provide this information."
                 
             elif intent == "list_appointments":
                 if not session_state.is_verified:
-                    reply = "Primeiro preciso verificar sua identidade. Por favor, forneça seu nome completo e data de nascimento."
+                    reply = "I need to verify your identity first. Please provide your full name and date of birth."
                 else:
                     appointments = AppointmentCRUD.get_by_patient_id(db, session_state.patient_id)
                     if appointments:
@@ -564,26 +564,26 @@ async def chat_endpoint(
                         session_state.last_list = apt_list
                         session_manager.update_session(session_id, session_state)
                         
-                        reply = f"Você tem {len(appointments)} consulta(s):\\n"
+                        reply = f"You have {len(appointments)} appointment(s):\\n"
                         for i, apt in enumerate(apt_list, 1):
-                            reply += f"{i}. {apt['date']} às {apt['time']} - {apt['doctor']} ({apt['status']})\\n"
+                            reply += f"{i}. {apt['date']} at {apt['time']} - {apt['doctor']} ({apt['status']})\\n"
                     else:
-                        reply = "Você não tem consultas agendadas."
+                        reply = "You have no scheduled appointments."
                         
             elif intent == "confirm_appointment":
                 if not session_state.is_verified:
-                    reply = "Primeiro preciso verificar sua identidade."
+                    reply = "I need to verify your identity first."
                 else:
-                    reply = "Para confirmar uma consulta, por favor especifique qual consulta deseja confirmar (número ou data)."
+                    reply = "To confirm an appointment, please specify which appointment you want to confirm (number or date)."
                     
             elif intent == "cancel_appointment":
                 if not session_state.is_verified:
-                    reply = "Primeiro preciso verificar sua identidade."
+                    reply = "I need to verify your identity first."
                 else:
-                    reply = "Para cancelar uma consulta, por favor especifique qual consulta deseja cancelar (número ou data)."
+                    reply = "To cancel an appointment, please specify which appointment you want to cancel (number or date)."
                     
             else:
-                reply = "Desculpe, não entendi. Posso ajudar você a verificar sua identidade, listar suas consultas, confirmar ou cancelar consultas. Como posso ajudar?"
+                reply = "Sorry, I didn't understand. I can help you verify your identity, list your appointments, confirm or cancel appointments. How can I help you?"
             
             # Calculate response time
             latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -658,7 +658,7 @@ async def verify_user(
             
             return VerifyUserResponse(
                 success=True,
-                message="Verificação realizada com sucesso!",
+                message="Identity verification successful!",
                 patient_id=patient.id
             )
         else:
@@ -666,7 +666,7 @@ async def verify_user(
             
             return VerifyUserResponse(
                 success=False,
-                message="Não foi possível verificar sua identidade. Verifique os dados informados."
+                message="Unable to verify your identity. Please check the information provided."
             )
             
     except Exception as e:
