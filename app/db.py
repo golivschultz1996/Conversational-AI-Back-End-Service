@@ -6,6 +6,7 @@ and provides CRUD operations for patients and appointments.
 """
 
 import os
+import re
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlmodel import SQLModel, create_engine, Session, select
@@ -50,11 +51,19 @@ class PatientCRUD:
     
     @staticmethod
     def get_by_name_dob_and_phone(session: Session, full_name: str, dob: str, phone: str) -> Optional[Patient]:
-        """Get patient by full name, date of birth, and phone number."""
+        """Get patient by full name, date of birth, and phone number.
+
+        Note: We store only the phone hash (PII protection). So we must
+        normalize and hash the provided phone before querying.
+        """
+        # Normalize phone (remove spaces, dashes, parentheses)
+        phone_clean = re.sub(r"[\s\-\(\)]", "", phone or "")
+        phone_hash = Patient.hash_phone(phone_clean)
+
         statement = select(Patient).where(
             Patient.full_name == full_name,
             Patient.dob == dob,
-            Patient.phone == phone
+            Patient.phone_hash == phone_hash
         )
         return session.exec(statement).first()
     
